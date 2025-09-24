@@ -174,6 +174,39 @@ def create_dimensional_scores(df, question_mapping):
     
     return pd.DataFrame(dimension_scores), dimensions
 
+def get_question_averages(df, question_mapping):
+    """Calculate average scores for each survey question"""
+    # Get all numeric survey questions
+    numeric_cols = identify_numeric_columns(df)
+    exclude_cols = ['Department']
+    survey_cols = [col for col in numeric_cols if col not in exclude_cols]
+    
+    question_averages = {}
+    
+    for col in survey_cols:
+        if col in df.columns:
+            # Handle reverse scored questions
+            if col == 'Meaningful_Impact':
+                scores = 6 - df[col].dropna()
+            else:
+                scores = df[col].dropna()
+            
+            if len(scores) > 0:
+                # Get original question text
+                original_question = None
+                for orig, mapped in question_mapping.items():
+                    if mapped == col:
+                        original_question = orig
+                        break
+                
+                question_averages[original_question or col] = {
+                    'average': scores.mean(),
+                    'count': len(scores),
+                    'column_name': col
+                }
+    
+    return question_averages
+
 def main():
     st.title("🎯 Employee Engagement Dashboard")
     st.markdown("**AP - Comprehensive Survey Analysis**")
@@ -206,7 +239,7 @@ def main():
     # Main dashboard tabs
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Executive Summary", 
-        "🎯 eNPS Analysis", 
+        "�� eNPS Analysis", 
         "📈 Dimensional Analysis", 
         "🔍 Deep Dive", 
         "👥 Employee Personas", 
@@ -279,6 +312,68 @@ def main():
                 bottom_scores = dim_scores.mean().sort_values(ascending=True).head(5)
                 for dimension, score in bottom_scores.items():
                     st.markdown(f"**{dimension}**: {score:.2f}/5")
+
+        st.markdown('---')
+
+        # Individual Question Averages
+        st.subheader(f"📋 Individual Question Averages{dept_title}")
+        
+        question_averages = get_question_averages(filtered_df, question_mapping)
+        
+        if question_averages:
+            # Create DataFrame for better visualization
+            questions_df = pd.DataFrame([
+                {
+                    'Question': question,
+                    'Average Score': data['average'],
+                    'Response Count': data['count']
+                }
+                for question, data in question_averages.items()
+            ])
+            
+            # Sort by average score (descending)
+            questions_df = questions_df.sort_values('Average Score', ascending=False)
+
+            # Detailed table (expandable)
+            st.dataframe(
+                questions_df.round(2),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Summary statistics
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                highest_score = questions_df.iloc[0]
+                st.markdown(f"""
+                **🏆 Highest Scoring Question:**
+                - **Score**: {highest_score['Average Score']:.2f}/5
+                - **Question**: {highest_score['Question'][:100]}...
+                """)
+            
+            with col2:
+                lowest_score = questions_df.iloc[-1]
+                st.markdown(f"""
+                **⚠️ Lowest Scoring Question:**
+                - **Score**: {lowest_score['Average Score']:.2f}/5
+                - **Question**: {lowest_score['Question'][:100]}...
+                """)
+            
+            with col3:
+                overall_avg = questions_df['Average Score'].mean()
+                above_avg = len(questions_df[questions_df['Average Score'] >= 4.0])
+                total_questions = len(questions_df)
+                
+                st.markdown(f"""
+                **📊 Summary Statistics:**
+                - **Overall Average**: {overall_avg:.2f}/5
+                - **Questions ≥ 4.0**: {above_avg}/{total_questions}
+                - **Total Questions**: {total_questions}
+                """)
+        
+        else:
+            st.warning("No survey questions found in the data.")
 
     with tab2:
         st.header(f"🎯 eNPS Analysis{dept_title}")
